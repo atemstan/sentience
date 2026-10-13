@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PaPeko Dual-Brain Control Panel</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121212; color: #e0e0e0; margin: 0; display: flex; height: 100vh; overflow: hidden; }
+    .sidebar { width: 340px; background: #1a1a1a; padding: 20px; border-right: 1px solid #333; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+    .main { flex: 1; display: flex; flex-direction: column; padding: 20px; gap: 15px; overflow-y: auto; }
+    label { font-size: 0.8rem; font-weight: bold; color: #aaa; margin-top: 4px; display: block; }
+    input, select, textarea, button { background: #252525; color: #fff; border: 1px solid #444; padding: 8px; border-radius: 4px; font-size: 0.9rem; }
+    textarea { resize: vertical; }
+    .btn { background: #007acc; cursor: pointer; border: none; font-weight: bold; transition: background 0.2s; color: #fff; }
+    .btn:hover { background: #005999; }
+    .card { background: #1a1a1a; border: 1px solid #333; padding: 15px; border-radius: 6px; }
+    .chat-box { flex: 1; min-height: 180px; max-height: 250px; overflow-y: auto; background: #141414; padding: 12px; border: 1px solid #2a2a2a; border-radius: 4px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px; }
+    .message { line-height: 1.4; }
+    .message.user { color: #4da6ff; }
+    .message.papeko { color: #66cc66; }
+    .message.system { color: #ff6b6b; }
+    pre { white-space: pre-wrap; word-wrap: break-word; background: #111; padding: 10px; border-radius: 4px; border: 1px solid #222; font-size: 0.85rem; color: #00e5ff; margin: 5px 0 0 0; min-height: 50px; max-height: 120px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+
+  <!-- SIDEBAR CONFIGURATION -->
+  <div class="sidebar">
+    <h3>Inference Engine</h3>
+    
+    <label for="provider">Backend Preset</label>
+    <select id="provider">
+      <option value="kobold">KoboldCPP Local (Port 5001)</option>
+    </select>
+
+    <label for="baseUrl">API Base URL / Port</label>
+    <input type="text" id="baseUrl" value="http://127.0.0.1:5001/v1">
+
+    <label for="storyModel">Stage 1: Story Model</label>
+    <input type="text" id="storyModel" value="kobold">
+
+    <label for="execModel">Stage 2: Exec Model</label>
+    <input type="text" id="execModel" value="kobold">
+
+    <label for="personaProfile">Persona Profile</label>
+    <textarea id="personaProfile" rows="4">- Character: PaPeko, an extremely shy, anxious, stuttering, and hesitant AI.</textarea>
+
+    <button type="button" class="btn" onclick="saveConfig()">Save Configuration</button>
+  </div>
+
+  <!-- MAIN CONTROL PANEL -->
+  <div class="main">
+    
+    <!-- Cognitive Telemetry Card -->
+    <div class="card" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 15px;">
+      <div>
+        <span style="font-size: 0.85rem; color: #aaa;">Cognitive Telemetry Internal Pressure:</span>
+        <strong id="internalPressure" style="color: #ff6b6b; font-size: 1.1rem; margin-left: 8px;">0%</strong>
+      </div>
+      <button type="button" class="btn" onclick="triggerBackgroundTick()" style="padding: 6px 12px; font-size: 0.8rem;">⚡ Background Tick</button>
+    </div>
+
+    <!-- Conversation Stream Card -->
+    <div class="card" style="display: flex; flex-direction: column; flex: 1;">
+      <h3 style="margin-top: 0; margin-bottom: 10px; font-size: 1rem;">CONVERSATION STREAM</h3>
+      <div id="chatBox" class="chat-box">
+        <div class="message papeko"><strong>PaPeko:</strong> System online. Dashboard connected.</div>
+      </div>
+      
+      <!-- INPUT FORM PREVENTING PAGE REFRESH -->
+      <form id="chatForm" onsubmit="handleFormSubmit(event)" style="display: flex; gap: 10px; align-items: center;">
+        <input type="text" id="userInput" placeholder="Type a message..." style="flex: 1;" autocomplete="off">
+        <button type="submit" id="sendBtn" class="btn">Send</button>
+      </form>
+    </div>
+
+    <!-- Live Overthinking Card -->
+    <div class="card">
+      <h3 style="margin-top: 0; margin-bottom: 8px; font-size: 1rem;">LIVE OVERTHINKING / STREAM-OF-CONSCIOUSNESS</h3>
+      
+      <span style="font-size: 0.8rem; font-weight: bold; color: #aaa;">Stage 1: Literary Narrative Perception</span>
+      <pre id="stage1Output">Waiting for perception...</pre>
+
+      <span style="font-size: 0.8rem; font-weight: bold; color: #aaa; margin-top: 10px; display: block;">Stage 2: Execution JSON</span>
+      <pre id="stage2Output">Waiting for execution...</pre>
+    </div>
+
+  </div>
+
+  <!-- UI CONTROLLER SCRIPT -->
+  <script>
+    function appendMessage(sender, text) {
+      const chatBox = document.getElementById('chatBox');
+      if (!chatBox) return;
+      const msgDiv = document.createElement('div');
+      const isAutonomous = sender.toLowerCase().includes('autonomous');
+      msgDiv.className = `message ${isAutonomous ? 'papeko' : sender.toLowerCase()}`;
+      msgDiv.innerHTML = `<strong>${sender}:</strong> ${text.replace(/\n/g, '<br>')}`;
+      chatBox.appendChild(msgDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function updateDashboardUI(data) {
+      if (!data) return;
+
+      const pressureElem = document.getElementById('internalPressure');
+      if (pressureElem && data.telemetry && data.telemetry.pressure !== undefined) {
+        pressureElem.innerText = `${Math.round(data.telemetry.pressure * 100)}%`;
+      }
+
+      const stage1Elem = document.getElementById('stage1Output');
+      if (stage1Elem && data.narrative) {
+        stage1Elem.innerText = typeof data.narrative === 'string' 
+          ? data.narrative 
+          : JSON.stringify(data.narrative, null, 2);
+      }
+
+      const stage2Elem = document.getElementById('stage2Output');
+      if (stage2Elem && data.execution) {
+        stage2Elem.innerText = JSON.stringify(data.execution, null, 2);
+      }
+    }
+
+    async function handleFormSubmit(event) {
+      if (event) event.preventDefault();
+
+      const inputElem = document.getElementById('userInput');
+      const personaElem = document.getElementById('personaProfile');
+      if (!inputElem) return;
+
+      const message = inputElem.value.trim();
+      if (!message) return;
+
+      appendMessage('User', message);
+      inputElem.value = '';
+
+      document.getElementById('stage1Output').innerText = '⏳ Processing Stage 1 Perception...';
+      document.getElementById('stage2Output').innerText = '⏳ Generating Stage 2 Execution JSON...';
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            message: message,
+            persona: personaElem ? personaElem.value : undefined 
+          })
+        });
+        
+        if (!res.ok) throw new Error(`Server returned status ${res.status}`);
+
+        const data = await res.json();
+        updateDashboardUI(data);
+
+        if (data.execution && data.execution.action === 'SPEAK_ALOUD' && data.execution.speech_output) {
+          appendMessage('PaPeko', data.execution.speech_output);
+        }
+      } catch (err) {
+        console.error('Chat error:', err);
+        appendMessage('System', `❌ Error: ${err.message}`);
+      }
+    }
+
+    async function triggerBackgroundTick() {
+      try {
+        const res = await fetch('/api/tick', { method: 'POST' });
+        if (!res.ok) return;
+        const data = await res.json();
+        updateDashboardUI(data);
+
+        if (data.execution && data.execution.action === 'SPEAK_ALOUD' && data.execution.speech_output) {
+          appendMessage('PaPeko (Autonomous)', data.execution.speech_output);
+        }
+      } catch (err) {
+        console.error('Tick error:', err);
+      }
+    }
+
+    // Background Heartbeat
+    setInterval(async () => {
+      try {
+        const res = await fetch('/api/tick', { method: 'POST' });
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        updateDashboardUI(data);
+
+        if (
+          data.execution && 
+          data.execution.action === 'SPEAK_ALOUD' && 
+          data.execution.speech_output &&
+          data.telemetry && 
+          data.telemetry.pressure > 0.40
+        ) {
+          appendMessage('PaPeko (Autonomous)', data.execution.speech_output);
+        }
+      } catch (err) {
+        // Silent catch
+      }
+    }, 15000);
+
+    async function saveConfig() {
+      const config = {
+        baseUrl: document.getElementById('baseUrl').value,
+        storyModel: document.getElementById('storyModel').value,
+        executionModel: document.getElementById('execModel').value,
+        persona: document.getElementById('personaProfile').value
+      };
+
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+      alert('Configuration saved!');
+    }
+  </script>
+</body>
+</html>
